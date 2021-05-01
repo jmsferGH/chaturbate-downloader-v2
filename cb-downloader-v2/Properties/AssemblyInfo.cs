@@ -8,9 +8,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("cb-downloader-v2")]
 [assembly: AssemblyDescription("A chaturbate stream downloader.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("J. Banquo")]
+[assembly: AssemblyCompany("xxxxxxxxx")]
 [assembly: AssemblyProduct("cb-downloader-v2")]
-[assembly: AssemblyCopyright("Copyright © 2017 J. Banquo")]
+[assembly: AssemblyCopyright("Copyright © 2021 xxxxxxxx")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -32,7 +32,7 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
 
 [assembly: log4net.Config.XmlConfigurator(Watch = true)]
