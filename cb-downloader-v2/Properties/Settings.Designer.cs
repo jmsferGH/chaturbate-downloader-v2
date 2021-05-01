@@ -21,7 +21,7 @@ namespace cb_downloader_v2.Properties {
             get {
                 return defaultInstance;
             }
-        }
+        }  
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]

@@ -19,9 +19,10 @@ namespace cb_downloader_v2
         private static string StreamTerminatedMessage = "[cli][info] Stream ended";
         private static string StreamServiceUnavailablePart = "503 Server Error: Service Temporarily Unavailable";
         private static string StreamOfflineMessagePart = "error: No playable streams found on this URL: ";
-        private static string CommandArguments = "chaturbate.com/{0} {1} -o {2}";
-        private static string FileNameTemplate = MainForm.OutputFolderName + "/{0}-{1}-{2}{3}.flv";
+        private static string CommandArguments = "chaturbate.com/{0} {1} -o {2} --hls-live-restart";
+        private static string FileNameTemplate = MainForm.OutputFolderName + "/{1}_{2}_{0}_{3}_{4}.mp4";
         private static string DefaultQuality = "best";
+
         private TimeSpan RestartDelay => TimeSpan.FromSeconds(Math.Max(_failures + 1, 6) * 10);
         private DateTimeOffset StandardRestartDelay => DateTimeOffset.UtcNow + RestartDelay;
         private readonly MainForm _mf;
@@ -53,6 +54,7 @@ namespace cb_downloader_v2
                 "error: Unable to open URL: http://chaturbate.com/" + ModelName + " (404 Client Error: Not Found)";
             _streamReadTimeoutMessage =
                 "error: Unable to open URL: http://chaturbate.com/" + ModelName + " (HTTPSConnectionPool(host='chaturbate.com', port=443): Read timed out.)";
+
         }
 
         public void Start(bool quickStart = false)
@@ -86,6 +88,7 @@ namespace cb_downloader_v2
                 if (quality == null)
                 {
                     Log.Debug($"{ModelName}: Disconnected (failed to retrieve quality options)");
+                    
                     _failures++;
                     Status = Status.Disconnected;
                     RestartTime = StandardRestartDelay;
@@ -160,10 +163,14 @@ namespace cb_downloader_v2
 
         private string SeedFileName()
         {
+            var quality = QualityOptions();
+
+            string qualityavailable = SelectQuality(quality, Properties.Settings.Default.TargetQuality);
+
             var timeNow = DateTime.Now;
-            var date = timeNow.ToString("ddMMyy");
-            var time = timeNow.ToString("HHmmss");
-            var fileName = string.Format(FileNameTemplate, ModelName, date, time, "");
+            var date = timeNow.ToString("yyyy-MM-dd");
+            var time = timeNow.ToString("HH-mm-ss");
+            var fileName = string.Format(FileNameTemplate, ModelName, date, time, "", qualityavailable );
 
             // Get a file name which is not in use
             int no = 0;
@@ -185,11 +192,13 @@ namespace cb_downloader_v2
                 if (Status != Status.Disconnected) // if a custom errors is fired before this, this becomes ignored
                 {
                     Log.Debug($"{ModelName}: Disconnecting (End of stream)");
+                    _mf.AppendTextBox ( $"{ModelName}: Disconnecting (End of stream)" + Environment.NewLine );
                     Terminate(true);
                 }
                 else
                 {
                     Log.Debug($"{ModelName}: End of stream");
+                    _mf.AppendTextBox ( $"{ModelName}: End of stream" + Environment.NewLine );
                 }
                 return;
 			}
@@ -198,7 +207,9 @@ namespace cb_downloader_v2
 				return;
 
             // Parsing line
+            Log.Debug($"~==============================================================================================================");
             Log.Debug($"{ModelName}: [RAW]: {line}");
+            _mf.AppendTextBox( $"{ModelName}: [RAW]: {line}" + Environment.NewLine);
 
             // Checking if the stream was terminated server-side
             if (line.Equals(StreamTerminatedMessage))
@@ -218,7 +229,7 @@ namespace cb_downloader_v2
             if (line.Contains(_streamInvalidUsernameMessage))
             {
                 Log.Debug($"{ModelName}: Disconnecting (HTTP404: Invalid username)");
-                
+                _mf.AppendTextBox( $"Invalid user name." );
                 Terminate();
                 _mf.RemoveInvalidUrlModel(ModelName);
             }

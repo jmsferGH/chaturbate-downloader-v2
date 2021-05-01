@@ -94,6 +94,8 @@ namespace cb_downloader_v2
             // Quick start functionality (i.e. start listener immediately)
             process.Start(immediate);
             Log.Info($"Added {modelName}");
+
+            _parent.AppendTextBox ( $"Added > {modelName}" + Environment.NewLine );
         }
 
         public bool RemoveModel(string modelName)

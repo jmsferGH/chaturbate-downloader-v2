@@ -1,36 +1,78 @@
 ﻿using System;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows.Forms;
 using cb_downloader_v2.Utils;
 using log4net;
+using System.Windows.Input;
 
 namespace cb_downloader_v2
 {
     public partial class MainForm : Form
     {
         public static readonly string OutputFolderName = "Recordings";
+        // public string  AppendTextBox { set { LogOutput.Text += value; } }
         private static readonly ILog Log = LogManager.GetLogger(typeof(MainForm));
         private static readonly string ModelsFileName = "models.txt";
         private IDownloaderProcessManager _manager;
         private ModelsGridWrapper models;
+        private Color MainColor = Color.FromArgb(64, 64, 64);
         // TODO fix issue where if you remove a model, it can still attempt to start it (something to do with task.delay/start pipeline i imagine)
 
         public MainForm()
         {
             InitializeComponent();
+
             models = new ModelsGridWrapper(modelsGrid);
             models.SortByModelNameAscending();
+            modelsGrid.CellFormatting += new System.Windows.Forms.DataGridViewCellFormattingEventHandler(this.modelsGrid_CellFormatting);
+            modelsGrid.ScrollBars = ScrollBars.None;
+            modelsGrid.AllowUserToResizeRows = false;
+            modelsGrid.MouseWheel += new MouseEventHandler(mousewheel);
 
+            this.Update();
+
+            toolStripStatusLabel1.Text = "Setup output folder.";
             PrepareOutputFolder();
+            toolStripStatusLabel1.Text = "Initialise manager.";
             InitializeManager();
-            LoadModelsFile();
+
+            toolStripStatusLabel1.Text = "Check for streamlink.";
             CheckStreamlinkInstall();
+            toolStripStatusLabel1.Text = "Load models list for autocomplete.";
             LoadModelNamesResourceFile();
-            Log.Info("Test");
+            Log.Info("Starting up ...");
+
+            this.Update();
+
+            ClipboardNotification.ClipboardUpdate += ClipboardNotification_ClipboardUpdate;
         }
 
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            
+
+            // In the forms Load()
+            this.menuStrip.Renderer = new MenuStripRenderer();
+            this.menuStrip.BackColor = MainColor;
+            this.menuStrip.ForeColor = Color.White;
+            
+        }
+
+        private void mousewheel(object sender, MouseEventArgs e)
+        {
+            if (e.Delta > 0 && modelsGrid.FirstDisplayedScrollingRowIndex > 0)
+            {
+                modelsGrid.FirstDisplayedScrollingRowIndex--;
+            }
+            else if (e.Delta < 0)
+            {
+                modelsGrid.FirstDisplayedScrollingRowIndex++;
+            }
+        }
         private void CheckStreamlinkInstall()
         {
             if (!FileHelper.IsFileAccessible(Properties.Settings.Default.StreamlinkExecutable))
@@ -54,13 +96,28 @@ namespace cb_downloader_v2
             var modelNames = await r.ReadToEndAsync();
             r.Close();
 
+            string[] xxx = Regex.Split(modelNames, Environment.NewLine);
+
+            toolStripProgressBar1.Maximum = xxx.Count();
+
+            // MessageBox.Show( xxx.Count().ToString(),"Info", MessageBoxButtons.OK,MessageBoxIcon.Exclamation);
+
+            Int32 countModelProgress = 0;
+
             // Parsing lines, we filter out comments and empty lines
-            foreach (var modelName in Regex.Split(modelNames, Environment.NewLine)
+            foreach (var modelName in xxx
                 .Select(line => line.Trim())
                 .Where(modelName => modelName.Length != 0 && !modelName.StartsWith("#")))
             {
                 _manager.AddModel(modelName);
+                countModelProgress += 1;
+                toolStripProgressBar1.Value = countModelProgress;
+                this.Update();
+                toolStripStatusLabel1.Text = "Loading model: " + modelName;
             }
+
+            toolStripProgressBar1.Value = xxx.Count();
+            toolStripStatusLabel1.Text = "Finished loading models.";
         }
 
         private void LoadModelNamesResourceFile()
@@ -115,9 +172,12 @@ namespace cb_downloader_v2
 
         private void quickAddModelButton_Click(object sender, EventArgs e)
         {
+            toolStripStatusLabel1.Text = "Adding model ...";
             // Adding user to listener and start immediately
-            _manager.AddModel(modelNameTextBox.Text, true);
+            string modelName = modelNameTextBox.Text;
+            _manager.AddModel(modelName, true);
             modelNameTextBox.Text = "";
+            toolStripStatusLabel1.Text = "Model added.";
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -171,10 +231,12 @@ namespace cb_downloader_v2
                 {
                     models.RemoveModel(modelName);
                     Log.Debug($"{modelName}: Remove");
+                    AppendTextBox ( $"{modelName}: Remove" + Environment.NewLine );
                 }
                 else
                 {
                     Log.Debug($"{modelName}: Remove failed");
+                    AppendTextBox ( $"{modelName}: Remove failed" + Environment.NewLine );
                 }
             }
         }
@@ -225,6 +287,31 @@ namespace cb_downloader_v2
                 // Otherwise, continue with the manual start
                 listener.Start(true);
                 Log.Debug($"{modelName}: Manual restart");
+
+                AppendTextBox ( $"{modelName}: Manual restart" + Environment.NewLine );
+            }
+        }
+
+        private void reconnectToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            foreach (var modelName in models.SelectedModelNames)
+            {
+                // Fetching process
+                var listener = _manager[modelName];
+
+                // Cancel restart if the listener is not running
+                if (listener.Status != Status.Connected)
+                    return;
+                // Fetching process
+
+                // Initiating termination
+                listener.Terminate();
+
+                // Continue with the forced recconect
+                listener.Start(true);
+                Log.Debug($"{modelName}: Forced recconect");
+
+                AppendTextBox($"{modelName}: Forced reconnect" + Environment.NewLine);
             }
         }
 
@@ -248,7 +335,8 @@ namespace cb_downloader_v2
                 if (_manager.RemoveModel(modelName))
                 {
                     models.RemoveModel(modelName);
-                    Log.Debug($"{modelName}: Remove all disconnected");
+                    // Log.Debug($"{modelName}: Remove all disconnected");
+                    AppendTextBox( $"{modelName}: Remove all disconnected" + Environment.NewLine );
                 }
             }
         }
@@ -265,6 +353,10 @@ namespace cb_downloader_v2
             restartCtxMenuItem.Enabled = idx != null
                 && models.GetStatus(idx.Value) == Status.Disconnected;
 
+            //  Disable element if selectedindex=-1 not checked
+            reconnectCtxMenuItem.Enabled = idx != null
+                && models.GetStatus(idx.Value) == Status.Connected;
+
             // if there is more than 0 unchecked models
             removeAllDisconnectedCtxMenuItem.Enabled = models.ModelsWithStatus(Status.Disconnected).Count > 0;
         }
@@ -274,6 +366,155 @@ namespace cb_downloader_v2
             SettingsForm form = new SettingsForm();
             form.ShowDialog(this);
             form.Dispose();
+        }
+
+
+        //private void modelsGrid_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        //{
+        //    // Update the balance column whenever the value of any cell changes.
+        //    modelsGrid_CellFormatting(object sender, DataGridViewCellEventArgs e);
+        //}
+
+
+        private void modelsGrid_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            foreach (DataGridViewRow row in modelsGrid.Rows)
+            {
+
+                // Log.Info(row.Cells["ModelStatus"].Value);
+
+                if (row.Cells["ModelStatus"].Value.ToString() == "Connected")
+                {
+                    row.Cells["ModelStatus"].Style.ForeColor = Color.LimeGreen;
+                }
+                else if (row.Cells["ModelStatus"].Value.ToString() == "Disconnected")
+                {
+                    row.Cells["ModelStatus"].Style.ForeColor = Color.OrangeRed;
+                }
+                else 
+                {
+                    row.Cells["ModelStatus"].Style.ForeColor = Color.Yellow;
+                }
+            }
+        }
+
+        private async void loadModelsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            // Prepare dialog
+
+            toolStripStatusLabel1.Text = "Load models file.";
+
+            OpenFileDialog dialog = new OpenFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = ".txt",
+                Filter = "Text File|*.txt|All Files|*.*",
+                FileName = "models"
+            };
+
+            // Show dialog and save if chosen to
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+
+                // Attempt to save content
+                var fileName = dialog.FileName;
+
+
+                var r = new StreamReader(fileName);
+                var modelNames = await r.ReadToEndAsync();
+                r.Close();
+
+                string[] xxx = Regex.Split(modelNames, Environment.NewLine);
+
+                toolStripProgressBar1.Maximum = xxx.Count();
+
+                // MessageBox.Show( xxx.Count().ToString(),"Info", MessageBoxButtons.OK,MessageBoxIcon.Exclamation);
+
+                Int32 countModelProgress = 0;
+
+                // Parsing lines, we filter out comments and empty lines
+                foreach (var modelName in xxx
+                    .Select(line => line.Trim())
+                    .Where(modelName => modelName.Length != 0 && !modelName.StartsWith("#")))
+                {
+                    _manager.AddModel(modelName);
+                    countModelProgress += 1;
+                    toolStripProgressBar1.Value = countModelProgress;
+                    this.Update();
+                    toolStripStatusLabel1.Text = "Loading model: " + modelName;
+                }
+
+                toolStripProgressBar1.Value = xxx.Count();
+                toolStripStatusLabel1.Text = "Finished loading models.";
+
+               
+            }
+        }
+
+        private void PasteModelButton_Click(object sender, EventArgs e)
+        {
+            string modelName = Clipboard.GetText();
+
+
+                // Adding user to listener and start immediately
+                toolStripStatusLabel1.Text = "Paste model from clipboard. Adding mode ...";
+                modelNameTextBox.Text = modelName;
+                
+                _manager.AddModel(modelName, true);
+
+                Thread.Sleep(3000);
+                modelNameTextBox.Text = "";
+                toolStripStatusLabel1.Text = "Model added.";
+
+
+        }
+        void ClipboardNotification_ClipboardUpdate(object sender, EventArgs e)
+        {
+            if (Clipboard.ContainsText())
+            {
+                string modelName = Clipboard.GetText();
+
+                if (UrlHelper.IsChaturbateUrl(modelName))
+                {
+                    toolStripStatusLabel1.Text = "Paste model from clipboard ( auto detect URL ). Adding mode ...";
+                    modelNameTextBox.Text = modelName;
+                    
+                    _manager.AddModel(modelName, true);
+                    Thread.Sleep(3000);
+                    modelNameTextBox.Text = "";
+                    toolStripStatusLabel1.Text = "Model added.";
+                }
+                
+            }
+        }
+
+        public void AppendTextBox(string value)
+        {
+            if (InvokeRequired)
+            {
+                this.Invoke(new Action<string>(AppendTextBox), new object[] { value });
+                return;
+            }
+
+            LogOutput.AppendText( value );
+
+        }
+
+
+
+        private void ClearLog_Click(object sender, EventArgs e)
+        {
+            LogOutput.Clear();
+        }
+
+        private void modelsGrid_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                var hti = modelsGrid.HitTest(e.X, e.Y);
+                modelsGrid.ClearSelection();
+                modelsGrid.Rows[hti.RowIndex].Selected = true;
+            }
         }
     }
 }

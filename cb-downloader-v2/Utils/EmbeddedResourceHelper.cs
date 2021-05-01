@@ -9,7 +9,7 @@ namespace cb_downloader_v2.Utils
         {
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(fileName);
             
-            using (var reader = new StreamReader(stream))
+            using (StreamReader reader = new StreamReader(stream))
             {
                 return reader.ReadToEnd();
             }
